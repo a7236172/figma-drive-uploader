@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Drive Uploader</title>
+  <!-- 載入 Google 官方 Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      background-color: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .container {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #0c8ce9;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 10px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+      width: 100%;
+    }
+    .btn:hover {
+      background-color: #0a70ba;
+    }
+    .btn:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    .file-input-wrapper {
+      position: relative;
+      border: 1px dashed #d1d5db;
+      border-radius: 6px;
+      padding: 12px;
+      text-align: center;
+      background-color: rgba(255, 255, 255, 0.7);
+    }
+    .file-input-wrapper input[type="file"] {
+      width: 100%;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    #status {
+      font-size: 13px;
+      color: #374151;
+      text-align: center;
+      min-height: 20px;
+      word-break: break-all;
+    }
+    .success {
+      color: #059669 !important;
+      font-weight: 500;
+    }
+    .error {
+      color: #dc2626 !important;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <button id="authBtn" class="btn">連結 Google 帳戶並授權</button>
+
+    <div id="uploadSection" style="display: none; display: flex; flex-direction: column; gap: 12px;">
+      <div class="file-input-wrapper">
+        <input type="file" id="filePicker" />
+      </div>
+      <button id="uploadBtn" class="btn">上傳檔案至 Google Drive</button>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const CLIENT_ID = '453798667636-jo36dfp87te7s1kjed4fs9qp9up9e9ds.apps.googleusercontent.com';
+    const FOLDER_ID = '11IDs7Uyuhe6QUdeXjKtulWKKNvaBWSc4';
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+    let tokenClient;
+    let accessToken = null;
+
+    const authBtn = document.getElementById('authBtn');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const uploadSection = document.getElementById('uploadSection');
+    const statusEl = document.getElementById('status');
+    const filePicker = document.getElementById('filePicker');
+
+    window.onload = function() {
+      if (typeof google === 'undefined') {
+        statusEl.className = 'error';
+        statusEl.innerText = '無法載入 Google 驗證模組，請檢查網路連線。';
+        return;
+      }
+
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: (tokenResponse) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            accessToken = tokenResponse.access_token;
+            statusEl.className = 'success';
+            statusEl.innerText = '帳戶已連結！請選取要上傳的檔案。';
+            authBtn.style.display = 'none';
+            uploadSection.style.display = 'flex';
+          } else if (tokenResponse.error) {
+            statusEl.className = 'error';
+            statusEl.innerText = '授權失敗：' + tokenResponse.error;
+          }
+        },
+      });
+    };
+
+    authBtn.addEventListener('click', () => {
+      statusEl.className = '';
+      statusEl.innerText = '等待授權完成...';
+      tokenClient.requestAccessToken({ prompt: '' });
+    });
+
+    uploadBtn.addEventListener('click', async () => {
+      const file = filePicker.files[0];
+      if (!file) {
+        alert('請先選擇檔案');
+        return;
+      }
+      if (!accessToken) {
+        alert('尚未取得授權');
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      statusEl.className = '';
+      statusEl.innerText = `正在上傳「${file.name}」中...`;
+
+      const metadata = {
+        name: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        parents: [FOLDER_ID]
+      };
+
+      const boundary = 'foo_bar_baz_delimiter';
+      const delimiter = `\r\n--${boundary}\r\n`;
+      const closeDelim = `\r\n--${boundary}--`;
+
+      const reader = new FileReader();
+      reader.readAsArrayBuffer(file);
+      reader.onload = async () => {
+        const fileContent = reader.result;
+
+        const metadataBlob = new Blob([
+          delimiter +
+          'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+          JSON.stringify(metadata) +
+          delimiter +
+          `Content-Type: ${metadata.mimeType}\r\n\r\n`
+        ]);
+
+        const fullPayload = new Blob([metadataBlob, fileContent, closeDelim]);
+
+        try {
+          const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': `multipart/related; boundary=${boundary}`
+            },
+            body: fullPayload
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            statusEl.className = 'success';
+            statusEl.innerHTML = `上傳成功！檔案名稱：${data.name}`;
+            filePicker.value = '';
+          } else {
+            statusEl.className = 'error';
+            statusEl.innerText = `上傳失敗：${data.error ? data.error.message : '未知錯誤'}`;
+          }
+        } catch (err) {
+          statusEl.className = 'error';
+          statusEl.innerText = `連線錯誤：${err.message}`;
+        } finally {
+          uploadBtn.disabled = false;
+        }
+      };
+    });
+  </script>
+</body>
+</html>

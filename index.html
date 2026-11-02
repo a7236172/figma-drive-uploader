@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Storage.to Upload</title>
+  <title>Upload to backend</title>
   <style>
     * {
       box-sizing: border-box;
@@ -155,7 +155,7 @@
   <div class="container">
     <div class="header">
       <h2>檔案上傳</h2>
-      <p>選擇或拖曳檔案後會立即上傳</p>
+      <p>選擇或拖曳檔案後，會先送到同域後端再進行上傳</p>
     </div>
 
     <div id="uploadSection" style="display: flex; flex-direction: column; gap: 16px;">
@@ -177,9 +177,10 @@
   </div>
 
   <script>
-    const STORAGE_TO_API_URL = 'https://storage.to/api/upload';
-    const STORAGE_TO_API_KEY = '965|bbhLpjC23n3rkFGQbc9cki2MQrhoajMeRlHjzVbP';
-    const STORAGE_TO_UPLOAD_FIELD = 'file';
+    // Important: this page must upload to a same-origin backend endpoint.
+    // The actual storage.to / Google Drive call must happen on the server,
+    // not in the browser, otherwise remote browser isolation may flag it as file exfiltration.
+    const UPLOAD_ENDPOINT = '/api/upload';
 
     let selectedFile = null;
     let uploading = false;
@@ -195,89 +196,34 @@
       statusEl.innerText = message;
     }
 
-    function buildRequestCandidates(file) {
-      const form = new FormData();
-      form.append(STORAGE_TO_UPLOAD_FIELD, file, file.name);
+    async function uploadToBackend(file) {
+      const formData = new FormData();
+      formData.append('file', file, file.name);
 
-      const candidates = [];
-
-      if (STORAGE_TO_API_KEY && STORAGE_TO_API_KEY !== 'PASTE_YOUR_STORAGE_TO_API_KEY_HERE') {
-        candidates.push({
-          name: 'bearer',
-          headers: {
-            Authorization: `Bearer ${STORAGE_TO_API_KEY}`,
-            Accept: 'application/json'
-          },
-          body: form
-        });
-
-        candidates.push({
-          name: 'x-api-key',
-          headers: {
-            'X-API-Key': STORAGE_TO_API_KEY,
-            Accept: 'application/json'
-          },
-          body: form
-        });
-
-        const formWithApiKey = new FormData();
-        formWithApiKey.append(STORAGE_TO_UPLOAD_FIELD, file, file.name);
-        formWithApiKey.append('api_key', STORAGE_TO_API_KEY);
-        candidates.push({
-          name: 'form-api-key',
-          headers: { Accept: 'application/json' },
-          body: formWithApiKey
-        });
-      }
-
-      candidates.push({
-        name: 'raw-upload',
-        headers: { Accept: 'application/json' },
-        body: form
+      const response = await fetch(UPLOAD_ENDPOINT, {
+        method: 'POST',
+        body: formData
       });
 
-      return candidates;
-    }
-
-    async function uploadToStorage(file) {
-      const candidates = buildRequestCandidates(file);
-      let lastError = null;
-
-      for (const candidate of candidates) {
+      let payload = null;
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        payload = await response.json();
+      } else {
+        const text = await response.text();
         try {
-          const response = await fetch(STORAGE_TO_API_URL, {
-            method: 'POST',
-            headers: candidate.headers,
-            body: candidate.body
-          });
-
-          const contentType = response.headers.get('content-type') || '';
-          const isJson = contentType.includes('application/json');
-          const payload = isJson ? await response.json() : await response.text();
-
-          if (response.ok) {
-            if (payload && typeof payload === 'object') {
-              return payload;
-            }
-            if (typeof payload === 'string' && payload.trim().startsWith('{')) {
-              try {
-                return JSON.parse(payload);
-              } catch (_) {}
-            }
-            return { url: payload || null };
-          }
-
-          lastError = new Error(
-            (payload && payload.error && payload.error.message) ||
-            (payload && payload.message) ||
-            `Upload failed (${response.status})`
-          );
-        } catch (err) {
-          lastError = err;
+          payload = text ? JSON.parse(text) : null;
+        } catch (_) {
+          payload = { raw: text };
         }
       }
 
-      throw lastError || new Error('Upload failed');
+      if (!response.ok) {
+        const message = (payload && (payload.error || payload.message)) || '上傳失敗';
+        throw new Error(message);
+      }
+
+      return payload;
     }
 
     function updateSelectedFile(file) {
@@ -296,8 +242,7 @@
       setStatus(`正在上傳「${selectedFile.name}」中...`);
 
       try {
-        const result = await uploadToStorage(selectedFile);
-
+        const result = await uploadToBackend(selectedFile);
         const uploadedUrl = result?.url || result?.file_url || result?.data?.url || result?.download_url || result?.link || result?.path || result?.file?.url || result?.result?.url;
 
         if (uploadedUrl) {

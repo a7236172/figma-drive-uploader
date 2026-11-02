@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Google Drive Uploader</title>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <title>Storage.to Upload</title>
   <style>
     * {
       box-sizing: border-box;
@@ -155,18 +154,16 @@
 <body>
   <div class="container">
     <div class="header">
-      <h2>檔案上傳至雲端硬碟</h2>
-      <p>支援點擊選擇或直接拖曳檔案進來</p>
+      <h2>檔案上傳</h2>
+      <p>選擇或拖曳檔案後會立即上傳</p>
     </div>
 
-    <button id="authBtn" class="btn">連結 Google 帳戶並授權</button>
-
-    <div id="uploadSection" style="display: none; flex-direction: column; gap: 16px;">
+    <div id="uploadSection" style="display: flex; flex-direction: column; gap: 16px;">
       <input type="file" id="filePicker" style="display: none;" />
 
       <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="選擇檔案">
         <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H7.5a4.5 4.5 0 01-.75-8.926z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/>
         </svg>
         <div class="drop-zone-text">Drop your file here or <span>browse</span></div>
         <div class="drop-zone-subtext">支援任何格式檔案</div>
@@ -180,22 +177,14 @@
   </div>
 
   <script>
-    const CLIENT_ID = '453798667636-jo36dfp87te7s1kjed4fs9qp9up9e9ds.apps.googleusercontent.com';
-    const FOLDER_ID = '11IDs7Uyuhe6QUdeXjKtulWKKNvaBWSc4';
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-    const MULTIPART_LIMIT = 5 * 1024 * 1024;
-    const AUTHORIZED_ORIGINS = [
-      'http://localhost:3000',
-      'https://a7236172.github.io'
-    ];
+    const STORAGE_TO_API_URL = 'https://storage.to/api/upload';
+    const STORAGE_TO_API_KEY = 'PASTE_YOUR_STORAGE_TO_API_KEY_HERE';
+    const STORAGE_TO_UPLOAD_FIELD = 'file';
 
-    let tokenClient;
-    let accessToken = null;
     let selectedFile = null;
+    let uploading = false;
 
-    const authBtn = document.getElementById('authBtn');
     const uploadBtn = document.getElementById('uploadBtn');
-    const uploadSection = document.getElementById('uploadSection');
     const statusEl = document.getElementById('status');
     const filePicker = document.getElementById('filePicker');
     const dropZone = document.getElementById('dropZone');
@@ -206,141 +195,139 @@
       statusEl.innerText = message;
     }
 
-    function isAuthorizedOrigin() {
-      const currentOrigin = window.location.origin;
-      return AUTHORIZED_ORIGINS.includes(currentOrigin);
-    }
+    function buildRequestCandidates(file) {
+      const form = new FormData();
+      form.append(STORAGE_TO_UPLOAD_FIELD, file, file.name);
 
-    async function uploadToGoogleDrive(file) {
-      const metadata = {
-        name: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        parents: [FOLDER_ID]
-      };
+      const candidates = [];
 
-      if (file.size <= MULTIPART_LIMIT) {
-        const formData = new FormData();
-        formData.append(
-          'metadata',
-          new Blob([JSON.stringify(metadata)], { type: 'application/json' })
-        );
-        formData.append('file', file);
-
-        const response = await fetch(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`
-            },
-            body: formData
-          }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data && data.error ? data.error.message : 'Multipart upload failed');
-        }
-
-        return data;
-      }
-
-      const sessionResponse = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true',
-        {
-          method: 'POST',
+      if (STORAGE_TO_API_KEY && STORAGE_TO_API_KEY !== 'PASTE_YOUR_STORAGE_TO_API_KEY_HERE') {
+        candidates.push({
+          name: 'bearer',
           headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json; charset=UTF-8'
+            Authorization: `Bearer ${STORAGE_TO_API_KEY}`,
+            Accept: 'application/json'
           },
-          body: JSON.stringify(metadata)
-        }
-      );
+          body: form
+        });
 
-      const uploadUrl = sessionResponse.headers.get('Location');
-      if (!uploadUrl) {
-        throw new Error('無法建立 Google Drive 上傳 session。');
+        candidates.push({
+          name: 'x-api-key',
+          headers: {
+            'X-API-Key': STORAGE_TO_API_KEY,
+            Accept: 'application/json'
+          },
+          body: form
+        });
+
+        const formWithApiKey = new FormData();
+        formWithApiKey.append(STORAGE_TO_UPLOAD_FIELD, file, file.name);
+        formWithApiKey.append('api_key', STORAGE_TO_API_KEY);
+        candidates.push({
+          name: 'form-api-key',
+          headers: { Accept: 'application/json' },
+          body: formWithApiKey
+        });
       }
 
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream'
-        },
-        body: file
+      candidates.push({
+        name: 'raw-upload',
+        headers: { Accept: 'application/json' },
+        body: form
       });
 
-      const uploadData = await uploadResponse.json();
-
-      if (!uploadResponse.ok) {
-        throw new Error(uploadData && uploadData.error ? uploadData.error.message : 'Resumable upload failed');
-      }
-
-      return uploadData;
+      return candidates;
     }
 
-    window.onload = function () {
-      const currentOrigin = window.location.origin;
+    async function uploadToStorage(file) {
+      const candidates = buildRequestCandidates(file);
+      let lastError = null;
 
-      if (!isAuthorizedOrigin()) {
-        setStatus(
-          `此頁面目前在 ${currentOrigin}，未被 Google OAuth 授權。請改用 http://localhost:3000 或 https://a7236172.github.io。`,
-          'error'
-        );
-        authBtn.disabled = true;
-        authBtn.textContent = '請在已授權的來源開啟此頁面';
-        return;
-      }
+      for (const candidate of candidates) {
+        try {
+          const response = await fetch(STORAGE_TO_API_URL, {
+            method: 'POST',
+            headers: candidate.headers,
+            body: candidate.body
+          });
 
-      if (typeof google === 'undefined') {
-        setStatus('無法載入 Google 驗證模組，請檢查網路連線。', 'error');
-        return;
-      }
+          const contentType = response.headers.get('content-type') || '';
+          const isJson = contentType.includes('application/json');
+          const payload = isJson ? await response.json() : await response.text();
 
-      tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: (tokenResponse) => {
-          if (tokenResponse && tokenResponse.access_token) {
-            accessToken = tokenResponse.access_token;
-            setStatus('授權完成！請拖曳或選取檔案。', 'success');
-            authBtn.style.display = 'none';
-            uploadSection.style.display = 'flex';
-            return;
+          if (response.ok) {
+            if (payload && typeof payload === 'object') {
+              return payload;
+            }
+            if (typeof payload === 'string' && payload.trim().startsWith('{')) {
+              try {
+                return JSON.parse(payload);
+              } catch (_) {}
+            }
+            return { url: payload || null };
           }
 
-          if (tokenResponse && tokenResponse.error) {
-            setStatus('授權失敗：' + tokenResponse.error, 'error');
-            return;
-          }
-
-          setStatus('授權失敗，請稍後再試。', 'error');
+          lastError = new Error(
+            (payload && payload.error && payload.error.message) ||
+            (payload && payload.message) ||
+            `Upload failed (${response.status})`
+          );
+        } catch (err) {
+          lastError = err;
         }
-      });
-    };
-
-    authBtn.addEventListener('click', () => {
-      if (!isAuthorizedOrigin()) {
-        setStatus(
-          `此頁面目前在 ${window.location.origin}，未在 Google OAuth 白名單中。請改用 http://localhost:3000 或 https://a7236172.github.io。`,
-          'error'
-        );
-        return;
       }
 
-      setStatus('等待授權完成...', '');
-      tokenClient.requestAccessToken({ prompt: '' });
-    });
+      throw lastError || new Error('Upload failed');
+    }
 
-    function handleFile(file) {
+    function updateSelectedFile(file) {
       if (!file) return;
-
       selectedFile = file;
       fileBadge.style.display = 'block';
       fileBadge.innerText = `已選取：${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
       setStatus('', '');
     }
+
+    async function uploadSelectedFile() {
+      if (!selectedFile || uploading) return;
+
+      uploading = true;
+      uploadBtn.disabled = true;
+      setStatus(`正在上傳「${selectedFile.name}」中...`);
+
+      try {
+        const result = await uploadToStorage(selectedFile);
+
+        const uploadedUrl = result?.url || result?.file_url || result?.data?.url || result?.download_url || result?.link || result?.path || result?.file?.url || result?.result?.url;
+
+        if (uploadedUrl) {
+          setStatus(`上傳成功：${uploadedUrl}`, 'success');
+        } else if (result && result.id) {
+          setStatus(`上傳成功，檔案 ID：${result.id}`, 'success');
+        } else if (result && result.name) {
+          setStatus(`上傳成功：${result.name}`, 'success');
+        } else {
+          setStatus('上傳成功', 'success');
+        }
+
+        selectedFile = null;
+        filePicker.value = '';
+        fileBadge.style.display = 'none';
+      } catch (err) {
+        setStatus(`上傳失敗：${err && err.message ? err.message : '未知錯誤'}`, 'error');
+      } finally {
+        uploading = false;
+        uploadBtn.disabled = false;
+      }
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+      if (!selectedFile) {
+        setStatus('請先拖入或選取檔案', 'error');
+        return;
+      }
+      await uploadSelectedFile();
+    });
 
     dropZone.addEventListener('click', () => filePicker.click());
     dropZone.addEventListener('keydown', (e) => {
@@ -351,8 +338,10 @@
     });
 
     filePicker.addEventListener('change', (e) => {
-      if (e.target.files && e.target.files.length > 0) {
-        handleFile(e.target.files[0]);
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        updateSelectedFile(file);
+        uploadSelectedFile();
       }
     });
 
@@ -375,36 +364,13 @@
     dropZone.addEventListener('drop', (e) => {
       const dt = e.dataTransfer;
       if (dt && dt.files && dt.files.length > 0) {
-        handleFile(dt.files[0]);
+        const file = dt.files[0];
+        updateSelectedFile(file);
+        uploadSelectedFile();
       }
     });
 
-    uploadBtn.addEventListener('click', async () => {
-      if (!selectedFile) {
-        alert('請先拖入或選取檔案');
-        return;
-      }
-
-      if (!accessToken) {
-        alert('尚未取得授權');
-        return;
-      }
-
-      uploadBtn.disabled = true;
-      setStatus(`正在上傳「${selectedFile.name}」中...`);
-
-      try {
-        const data = await uploadToGoogleDrive(selectedFile);
-        setStatus(`上傳成功！檔案名稱：${data.name}`, 'success');
-        selectedFile = null;
-        fileBadge.style.display = 'none';
-        filePicker.value = '';
-      } catch (err) {
-        setStatus(`上傳失敗：${err.message || '未知錯誤'}`, 'error');
-      } finally {
-        uploadBtn.disabled = false;
-      }
-    });
+    setStatus('選擇或拖曳檔案即可立即上傳', '');
   </script>
 </body>
 </html>

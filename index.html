@@ -166,7 +166,7 @@
 
       <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="選擇檔案">
         <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H7.5a4.5 4.5 0 01-.75-8.926z"/>
         </svg>
         <div class="drop-zone-text">Drop your file here or <span>browse</span></div>
         <div class="drop-zone-subtext">支援任何格式檔案</div>
@@ -180,10 +180,14 @@
   </div>
 
   <script>
-    const CLIENT_ID = '453798667636-jo36dfp87te7s1kjed4fs9qp9e9ds.apps.googleusercontent.com';
+    const CLIENT_ID = '453798667636-jo36dfp87te7s1kjed4fs9qp9up9e9ds.apps.googleusercontent.com';
     const FOLDER_ID = '11IDs7Uyuhe6QUdeXjKtulWKKNvaBWSc4';
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
     const MULTIPART_LIMIT = 5 * 1024 * 1024;
+    const AUTHORIZED_ORIGINS = [
+      'http://localhost:3000',
+      'https://a7236172.github.io'
+    ];
 
     let tokenClient;
     let accessToken = null;
@@ -200,6 +204,11 @@
     function setStatus(message, type = '') {
       statusEl.className = type;
       statusEl.innerText = message;
+    }
+
+    function isAuthorizedOrigin() {
+      const currentOrigin = window.location.origin;
+      return AUTHORIZED_ORIGINS.includes(currentOrigin);
     }
 
     async function uploadToGoogleDrive(file) {
@@ -272,6 +281,18 @@
     }
 
     window.onload = function () {
+      const currentOrigin = window.location.origin;
+
+      if (!isAuthorizedOrigin()) {
+        setStatus(
+          `此頁面目前在 ${currentOrigin}，未被 Google OAuth 授權。請改用 http://localhost:3000 或 https://a7236172.github.io。`,
+          'error'
+        );
+        authBtn.disabled = true;
+        authBtn.textContent = '請在已授權的來源開啟此頁面';
+        return;
+      }
+
       if (typeof google === 'undefined') {
         setStatus('無法載入 Google 驗證模組，請檢查網路連線。', 'error');
         return;
@@ -300,6 +321,14 @@
     };
 
     authBtn.addEventListener('click', () => {
+      if (!isAuthorizedOrigin()) {
+        setStatus(
+          `此頁面目前在 ${window.location.origin}，未在 Google OAuth 白名單中。請改用 http://localhost:3000 或 https://a7236172.github.io。`,
+          'error'
+        );
+        return;
+      }
+
       setStatus('等待授權完成...', '');
       tokenClient.requestAccessToken({ prompt: '' });
     });

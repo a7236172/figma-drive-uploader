@@ -6,7 +6,7 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 
 STORAGE_TO_API_URL = os.getenv("STORAGE_TO_API_URL", "https://storage.to/api/upload")
-STORAGE_TO_API_KEY = os.getenv("STORAGE_TO_API_KEY", "")
+STORAGE_TO_API_KEY = os.getenv("STORAGE_TO_API_KEY", "965|bbhLpjC23n3rkFGQbc9cki2MQrhoajMeRlHjzVbP")
 
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE_MB", "200")) * 1024 * 1024
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_SIZE

@@ -183,6 +183,7 @@
     const CLIENT_ID = '453798667636-jo36dfp87te7s1kjed4fs9qp9e9ds.apps.googleusercontent.com';
     const FOLDER_ID = '11IDs7Uyuhe6QUdeXjKtulWKKNvaBWSc4';
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+    const MULTIPART_LIMIT = 5 * 1024 * 1024;
 
     let tokenClient;
     let accessToken = null;
@@ -199,6 +200,75 @@
     function setStatus(message, type = '') {
       statusEl.className = type;
       statusEl.innerText = message;
+    }
+
+    async function uploadToGoogleDrive(file) {
+      const metadata = {
+        name: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        parents: [FOLDER_ID]
+      };
+
+      if (file.size <= MULTIPART_LIMIT) {
+        const formData = new FormData();
+        formData.append(
+          'metadata',
+          new Blob([JSON.stringify(metadata)], { type: 'application/json' })
+        );
+        formData.append('file', file);
+
+        const response = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`
+            },
+            body: formData
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data && data.error ? data.error.message : 'Multipart upload failed');
+        }
+
+        return data;
+      }
+
+      const sessionResponse = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=UTF-8'
+          },
+          body: JSON.stringify(metadata)
+        }
+      );
+
+      const uploadUrl = sessionResponse.headers.get('Location');
+      if (!uploadUrl) {
+        throw new Error('無法建立 Google Drive 上傳 session。');
+      }
+
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream'
+        },
+        body: file
+      });
+
+      const uploadData = await uploadResponse.json();
+
+      if (!uploadResponse.ok) {
+        throw new Error(uploadData && uploadData.error ? uploadData.error.message : 'Resumable upload failed');
+      }
+
+      return uploadData;
     }
 
     window.onload = function () {
@@ -295,44 +365,13 @@
       setStatus(`正在上傳「${selectedFile.name}」中...`);
 
       try {
-        const metadata = {
-          name: selectedFile.name,
-          mimeType: selectedFile.type || 'application/octet-stream',
-          parents: [FOLDER_ID]
-        };
-
-        const formData = new FormData();
-        formData.append(
-          'metadata',
-          new Blob([JSON.stringify(metadata)], { type: 'application/json' })
-        );
-        formData.append('file', selectedFile);
-
-        const response = await fetch(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`
-            },
-            body: formData
-          }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          const message = data && data.error ? data.error.message : '未知錯誤';
-          setStatus(`上傳失敗：${message}`, 'error');
-          return;
-        }
-
+        const data = await uploadToGoogleDrive(selectedFile);
         setStatus(`上傳成功！檔案名稱：${data.name}`, 'success');
         selectedFile = null;
         fileBadge.style.display = 'none';
         filePicker.value = '';
       } catch (err) {
-        setStatus(`連線錯誤：${err.message}`, 'error');
+        setStatus(`上傳失敗：${err.message || '未知錯誤'}`, 'error');
       } finally {
         uploadBtn.disabled = false;
       }

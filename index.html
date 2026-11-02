@@ -19,53 +19,108 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 16px;
+      padding: 24px;
+      min-height: 100vh;
     }
     .container {
       width: 100%;
-      max-width: 420px;
+      max-width: 480px;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 32px 24px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 20px;
+    }
+    .header {
+      text-align: center;
+    }
+    .header h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 6px;
+    }
+    .header p {
+      font-size: 13px;
+      color: #6b7280;
     }
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background-color: #0c8ce9;
+      background-color: #2563eb;
       color: #ffffff;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 500;
-      padding: 10px 16px;
-      border-radius: 6px;
+      padding: 12px 20px;
+      border-radius: 8px;
       border: none;
       cursor: pointer;
-      transition: background-color 0.2s ease;
+      transition: all 0.2s ease;
       width: 100%;
     }
     .btn:hover {
-      background-color: #0a70ba;
+      background-color: #1d4ed8;
     }
     .btn:disabled {
-      background-color: #cccccc;
+      background-color: #9ca3af;
       cursor: not-allowed;
     }
-    .file-input-wrapper {
-      position: relative;
-      border: 1px dashed #d1d5db;
-      border-radius: 6px;
-      padding: 12px;
+    /* 拖曳上傳核心卡片區塊 */
+    .drop-zone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 36px 20px;
       text-align: center;
-      background-color: rgba(255, 255, 255, 0.7);
-    }
-    .file-input-wrapper input[type="file"] {
-      width: 100%;
-      font-size: 13px;
+      background-color: #f8fafc;
       cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: #2563eb;
+      background-color: #eff6ff;
+    }
+    .drop-zone svg {
+      width: 42px;
+      height: 42px;
+      color: #64748b;
+      transition: color 0.2s ease;
+    }
+    .drop-zone:hover svg, .drop-zone.dragover svg {
+      color: #2563eb;
+    }
+    .drop-zone-text {
+      font-size: 14px;
+      font-weight: 500;
+      color: #334155;
+    }
+    .drop-zone-text span {
+      color: #2563eb;
+      text-decoration: underline;
+    }
+    .drop-zone-subtext {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .file-badge {
+      display: none;
+      align-items: center;
+      background-color: #e0f2fe;
+      color: #0369a1;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      word-break: break-all;
     }
     #status {
       font-size: 13px;
-      color: #374151;
       text-align: center;
       min-height: 20px;
       word-break: break-all;
@@ -81,41 +136,49 @@
   </style>
 </head>
 <body>
-
+    
   <div class="container">
+    <div class="header">
+      <h2>檔案上傳至雲端硬碟</h2>
+      <p>支援點擊選擇或直接拖曳檔案進來</p>
+    </div>
     <button id="authBtn" class="btn">連結 Google 帳戶並授權</button>
 
-    <div id="uploadSection" style="display: none; display: flex; flex-direction: column; gap: 12px;">
-      <div class="file-input-wrapper">
-        <input type="file" id="filePicker" />
+    <div id="uploadSection" style="display: none; flex-direction: column; gap: 16px;">
+      <input type="file" id="filePicker" style="display: none;" />
+      <div class="drop-zone" id="dropZone">
+        <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"></path>
+        </svg>
+        <div class="drop-zone-text">Drop your file here or <span>browse</span></div>
+        <div class="drop-zone-subtext">支援任何格式檔案</div>
       </div>
-      <button id="uploadBtn" class="btn">上傳檔案至 Google Drive</button>
+      <div class="file-badge" id="fileBadge"></div>
+      <button id="uploadBtn" class="btn">開始上傳</button>
     </div>
-
     <div id="status"></div>
   </div>
-
-  <script>
+<script>
     const CLIENT_ID = '453798667636-jo36dfp87te7s1kjed4fs9qp9up9e9ds.apps.googleusercontent.com';
     const FOLDER_ID = '11IDs7Uyuhe6QUdeXjKtulWKKNvaBWSc4';
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-
+    
     let tokenClient;
     let accessToken = null;
-
+    let selectedFile = null;
     const authBtn = document.getElementById('authBtn');
     const uploadBtn = document.getElementById('uploadBtn');
     const uploadSection = document.getElementById('uploadSection');
     const statusEl = document.getElementById('status');
     const filePicker = document.getElementById('filePicker');
-
+    const dropZone = document.getElementById('dropZone');
+    const fileBadge = document.getElementById('fileBadge');
     window.onload = function() {
       if (typeof google === 'undefined') {
         statusEl.className = 'error';
         statusEl.innerText = '無法載入 Google 驗證模組，請檢查網路連線。';
         return;
       }
-
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
@@ -123,27 +186,60 @@
           if (tokenResponse && tokenResponse.access_token) {
             accessToken = tokenResponse.access_token;
             statusEl.className = 'success';
-            statusEl.innerText = '帳戶已連結！請選取要上傳的檔案。';
+            statusEl.innerText = '授權完成！請拖曳或選取檔案。';
             authBtn.style.display = 'none';
             uploadSection.style.display = 'flex';
           } else if (tokenResponse.error) {
             statusEl.className = 'error';
             statusEl.innerText = '授權失敗：' + tokenResponse.error;
           }
-        },
+          },
       });
     };
-
-    authBtn.addEventListener('click', () => {
+  authBtn.addEventListener('click', () => {
       statusEl.className = '';
       statusEl.innerText = '等待授權完成...';
       tokenClient.requestAccessToken({ prompt: '' });
     });
+  function handleFile(file) {
+      if (!file) return;
+      selectedFile = file;
+      fileBadge.style.display = 'block';
+      fileBadge.innerText = `已選取：${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+      statusEl.innerText = '';
+    }
+  dropZone.addEventListener('click', () => filePicker.click());
 
-    uploadBtn.addEventListener('click', async () => {
-      const file = filePicker.files[0];
-      if (!file) {
-        alert('請先選擇檔案');
+    filePicker.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove('dragover');
+      });
+    });
+    dropZone.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      if (dt.files && dt.files.length > 0) {
+        handleFile(dt.files[0]);
+      }
+    });
+
+      uploadBtn.addEventListener('click', async () => {
+      if (!selectedFile) {
+        alert('請先拖入或選取檔案');
         return;
       }
       if (!accessToken) {
@@ -151,34 +247,29 @@
         return;
       }
 
-      uploadBtn.disabled = true;
-      statusEl.className = '';
-      statusEl.innerText = `正在上傳「${file.name}」中...`;
-
-      const metadata = {
-        name: file.name,
-        mimeType: file.type || 'application/octet-stream',
+    uploadBtn.disabled = true;
+    statusEl.className = '';
+    tatusEl.innerText = `正在上傳「${selectedFile.name}」中...`;
+    const metadata = {
+        name: selectedFile.name,
+        mimeType: selectedFile.type || 'application/octet-stream',
         parents: [FOLDER_ID]
       };
-
-      const boundary = 'foo_bar_baz_delimiter';
-      const delimiter = `\r\n--${boundary}\r\n`;
-      const closeDelim = `\r\n--${boundary}--`;
-
-      const reader = new FileReader();
-      reader.readAsArrayBuffer(file);
-      reader.onload = async () => {
-        const fileContent = reader.result;
-
-        const metadataBlob = new Blob([
+    const boundary = 'foo_bar_baz_delimiter';
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelim = `\r\n--${boundary}--`;
+    const reader = new FileReader();
+    reader.readAsArrayBuffer(selectedFile);
+    reader.onload = async () => {
+      const fileContent = reader.result;
+      const metadataBlob = new Blob([
           delimiter +
           'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
           JSON.stringify(metadata) +
           delimiter +
           `Content-Type: ${metadata.mimeType}\r\n\r\n`
         ]);
-
-        const fullPayload = new Blob([metadataBlob, fileContent, closeDelim]);
+    const fullPayload = new Blob([metadataBlob, fileContent, closeDelim]);
 
         try {
           const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
@@ -189,11 +280,12 @@
             },
             body: fullPayload
           });
-
           const data = await res.json();
           if (res.ok) {
             statusEl.className = 'success';
             statusEl.innerHTML = `上傳成功！檔案名稱：${data.name}`;
+            selectedFile = null;
+            fileBadge.style.display = 'none';
             filePicker.value = '';
           } else {
             statusEl.className = 'error';
@@ -202,7 +294,7 @@
         } catch (err) {
           statusEl.className = 'error';
           statusEl.innerText = `連線錯誤：${err.message}`;
-        } finally {
+          } finally {
           uploadBtn.disabled = false;
         }
       };
@@ -210,3 +302,23 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    

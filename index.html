@@ -155,7 +155,7 @@
   <div class="container">
     <div class="header">
       <h2>檔案上傳</h2>
-      <p>選擇或拖曳檔案後，會先送到同域後端再進行上傳</p>
+      <p>選擇或拖曳檔案後，自動送到同域後端</p>
     </div>
 
     <div id="uploadSection" style="display: flex; flex-direction: column; gap: 16px;">
@@ -177,9 +177,6 @@
   </div>
 
   <script>
-    // Important: this page must upload to a same-origin backend endpoint.
-    // The actual storage.to / Google Drive call must happen on the server,
-    // not in the browser, otherwise remote browser isolation may flag it as file exfiltration.
     const UPLOAD_ENDPOINT = '/api/upload';
 
     let selectedFile = null;
@@ -219,8 +216,8 @@
       }
 
       if (!response.ok) {
-        const message = (payload && (payload.error || payload.message)) || '上傳失敗';
-        throw new Error(message);
+        const msg = (payload && (payload.error || payload.message)) || '上傳失敗';
+        throw new Error(msg);
       }
 
       return payload;
@@ -243,6 +240,7 @@
 
       try {
         const result = await uploadToBackend(selectedFile);
+
         const uploadedUrl = result?.url || result?.file_url || result?.data?.url || result?.download_url || result?.link || result?.path || result?.file?.url || result?.result?.url;
 
         if (uploadedUrl) {

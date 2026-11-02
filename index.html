@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Upload to backend</title>
+  <title>Storage.to Uploader</title>
   <style>
     * {
       box-sizing: border-box;
@@ -18,8 +18,8 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 24px;
       min-height: 100vh;
+      padding: 24px;
     }
 
     .container {
@@ -155,7 +155,7 @@
   <div class="container">
     <div class="header">
       <h2>檔案上傳</h2>
-      <p>選擇或拖曳檔案後，自動送到同域後端</p>
+      <p>支援點擊選擇或直接拖曳檔案進來</p>
     </div>
 
     <div id="uploadSection" style="display: flex; flex-direction: column; gap: 16px;">
@@ -177,7 +177,9 @@
   </div>
 
   <script>
-    const UPLOAD_ENDPOINT = '/api/upload';
+    const STORAGE_TO_API_URL = 'https://storage.to/api/upload';
+    const STORAGE_TO_API_KEY = 'PASTE_YOUR_STORAGE_TO_API_KEY_HERE';
+    const STORAGE_TO_UPLOAD_FIELD = 'file';
 
     let selectedFile = null;
     let uploading = false;
@@ -193,31 +195,34 @@
       statusEl.innerText = message;
     }
 
-    async function uploadToBackend(file) {
+    async function uploadToStorage(file) {
       const formData = new FormData();
-      formData.append('file', file, file.name);
+      formData.append(STORAGE_TO_UPLOAD_FIELD, file, file.name);
 
-      const response = await fetch(UPLOAD_ENDPOINT, {
+      const headers = {
+        Accept: 'application/json'
+      };
+
+      if (STORAGE_TO_API_KEY && STORAGE_TO_API_KEY !== 'PASTE_YOUR_STORAGE_TO_API_KEY_HERE') {
+        headers.Authorization = `Bearer ${STORAGE_TO_API_KEY}`;
+        headers['X-API-Key'] = STORAGE_TO_API_KEY;
+      }
+
+      const response = await fetch(STORAGE_TO_API_URL, {
         method: 'POST',
+        headers,
         body: formData
       });
 
-      let payload = null;
       const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        payload = await response.json();
-      } else {
-        const text = await response.text();
-        try {
-          payload = text ? JSON.parse(text) : null;
-        } catch (_) {
-          payload = { raw: text };
-        }
-      }
+      const isJson = contentType.includes('application/json');
+      const payload = isJson ? await response.json() : await response.text();
 
       if (!response.ok) {
-        const msg = (payload && (payload.error || payload.message)) || '上傳失敗';
-        throw new Error(msg);
+        const message = (payload && payload.error && payload.error.message) ||
+          (payload && payload.message) ||
+          `上傳失敗 (${response.status})`;
+        throw new Error(message);
       }
 
       return payload;
@@ -239,7 +244,7 @@
       setStatus(`正在上傳「${selectedFile.name}」中...`);
 
       try {
-        const result = await uploadToBackend(selectedFile);
+        const result = await uploadToStorage(selectedFile);
 
         const uploadedUrl = result?.url || result?.file_url || result?.data?.url || result?.download_url || result?.link || result?.path || result?.file?.url || result?.result?.url;
 
